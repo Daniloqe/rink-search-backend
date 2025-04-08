@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
 const axios = require("axios");
+const path = require("path");
 
 const app = express();
 app.use(cors());
@@ -55,62 +56,61 @@ async function getCoordinates(zipcode) {
 
 // Функция нормализации ZIP-кода для Чехии
 function normalizeZipcode(zipcode) {
-    if (!zipcode) return "";
-    const cleanZip = zipcode.replace(/\s+/g, ""); // Убираем все пробелы
-    if (cleanZip.length === 5) {
-      return `${cleanZip.slice(0, 3)} ${cleanZip.slice(3)}`; // Добавляем пробел после 3-го символа
-    }
-    return cleanZip;
+  if (!zipcode) return "";
+  const cleanZip = zipcode.replace(/\s+/g, ""); // Убираем все пробелы
+  if (cleanZip.length === 5) {
+    return `${cleanZip.slice(0, 3)} ${cleanZip.slice(3)}`; // Добавляем пробел после 3-го символа
   }
-  
-  // Обработчик запроса на поиск катков
-  app.get("/rinks", async (req, res) => {
-    let { zipcode, radius } = req.query;
-    zipcode = normalizeZipcode(zipcode); // Приводим ZIP-код к стандартному формату
-    const searchRadius = parseFloat(radius) || 10;
-  
-    console.log(`🔎 Поиск катков для ZIP-кода: "${zipcode}", радиус: ${searchRadius} км`);
-  
-    try {
-      let coords;
-  
-      // Проверяем ZIP-код в базе
-      const zipResult = await pool.query("SELECT lat, lng FROM rinks WHERE zipcode = $1 LIMIT 1", [zipcode]);
-  
-      if (zipResult.rows.length > 0) {
-        coords = zipResult.rows[0];
-        console.log("✅ ZIP-код найден в базе");
-      } else {
-        console.log("⚠️ ZIP-кода нет в базе, запрашиваем координаты...");
-        coords = await getCoordinates(zipcode);
-        if (!coords) {
-          return res.status(400).json({ error: "Не удалось определить координаты по этому ZIP-коду" });
-        }
+  return cleanZip;
+}
+
+// Обработчик запроса на поиск катков
+app.get("/rinks", async (req, res) => {
+  let { zipcode, radius } = req.query;
+  zipcode = normalizeZipcode(zipcode); // Приводим ZIP-код к стандартному формату
+  const searchRadius = parseFloat(radius) || 10;
+
+  console.log(`🔎 Поиск катков для ZIP-кода: "${zipcode}", радиус: ${searchRadius} км`);
+
+  try {
+    let coords;
+
+    // Проверяем ZIP-код в базе
+    const zipResult = await pool.query("SELECT lat, lng FROM rinks WHERE zipcode = $1 LIMIT 1", [zipcode]);
+
+    if (zipResult.rows.length > 0) {
+      coords = zipResult.rows[0];
+      console.log("✅ ZIP-код найден в базе");
+    } else {
+      console.log("⚠️ ZIP-кода нет в базе, запрашиваем координаты...");
+      coords = await getCoordinates(zipcode);
+      if (!coords) {
+        return res.status(400).json({ error: "Не удалось определить координаты по этому ZIP-коду" });
       }
-  
-      const { lat, lng } = coords;
-      console.log(`📍 Используем координаты: ${lat}, ${lng}`);
-  
-      // Запрашиваем все катки
-      const result = await pool.query("SELECT * FROM rinks");
-  
-      // Фильтруем катки по радиусу
-      const filteredRinks = result.rows.filter((rink) => {
-        if (!rink.lat || !rink.lng) return false;
-        const distance = getDistance(lat, lng, rink.lat, rink.lng);
-        return distance <= searchRadius;
-      });
-  
-      console.log(`🏒 Найдено катков в радиусе: ${filteredRinks.length}`);
-      res.json(filteredRinks);
-    } catch (error) {
-      console.error("❌ Ошибка сервера:", error);
-      res.status(500).json({ error: "Ошибка сервера" });
     }
-  });  
+
+    const { lat, lng } = coords;
+    console.log(`📍 Используем координаты: ${lat}, ${lng}`);
+
+    // Запрашиваем все катки
+    const result = await pool.query("SELECT * FROM rinks");
+
+    // Фильтруем катки по радиусу
+    const filteredRinks = result.rows.filter((rink) => {
+      if (!rink.lat || !rink.lng) return false;
+      const distance = getDistance(lat, lng, rink.lat, rink.lng);
+      return distance <= searchRadius;
+    });
+
+    console.log(`🏒 Найдено катков в радиусе: ${filteredRinks.length}`);
+    res.json(filteredRinks);
+  } catch (error) {
+    console.error("❌ Ошибка сервера:", error);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
+});
 
 const PORT = 3001;
-const path = require("path");
 
 // Отдаём фронтенд
 app.use(express.static(path.join(__dirname, "public")));
