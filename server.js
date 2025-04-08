@@ -33,7 +33,7 @@ async function getCoordinates(zipcode) {
   console.log(`🔍 Запрос координат для ZIP-кода: ${zipcode}`);
   try {
     const response = await axios.get(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${zipcode}`
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(zipcode)}`
     );
 
     if (response.data.length > 0) {
